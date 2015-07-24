@@ -1,0 +1,14 @@
+/*
+*write by wsg 2015-1-7
+*/
+
+
+void USART0Init(void);//串口0初始化
+
+void USART1_Init(void);
+
+void USART0_Transmit(unsigned char dat);
+
+void USART0_TransmitString(unsigned char *str);
+
+void UASRT0_RXC_ISR_Handler(void);

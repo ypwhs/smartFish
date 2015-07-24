@@ -1,0 +1,215 @@
+;********************************************************************************************************
+;                                       APPLICATION SPECIFIC ISRs
+;
+;                                (c) Copyright 2005, Micrium, Weston, FL
+;                                          All Rights Reserved
+;
+; File     : APP_ISR.S90
+; By       : Jean J. Labrosse
+;********************************************************************************************************
+
+
+                NAME    app_isr
+
+                RSEG    CSTACK:DATA:NOROOT(0)
+                ;CSTACK 是数据堆栈大小，用于存放局部变量和某些参数的传递，
+                ;注意IAR设置大小里面单位是字节  
+
+                RSEG    RSTACK:DATA:NOROOT(0)
+                ;RSTACK 是函数返回地址堆栈 用于存放函数返回地址和中断断点地址，
+                ;注意IAR设置大小里面单位是字
+
+#include        <os_cpu_i.s90>
+                
+;********************************************************************************************************
+;                                         EXTERNAL DECLARATIONS
+;********************************************************************************************************
+
+                ;EXTERN OSIntEnter
+                EXTERN  OSIntExit
+                EXTERN  OSIntNesting
+                EXTERN  OSTCBCur
+                
+                EXTERN  BSP_TickISR_Handler
+                EXTERN  UASRT0_RXC_ISR_Handler
+				EXTERN  TWI_ISR_Handler
+				EXTERN Timer3_OVF_ISR_Handler
+                
+
+;********************************************************************************************************
+;                                          PUBLIC DECLARATIONS
+;********************************************************************************************************
+
+                PUBLIC  BSP_TickISR
+                ;PUBLIC用来说明当前模块中可被其他模块所引用的公共标识符
+                PUBLIC  UASRT0_RXC_ISR
+				PUBLIC TWI_ISR
+				PUBLIC Timer3_OVF_ISR
+
+
+;/*$PAGE*/
+;********************************************************************************************************
+;                                           SYSTEM TICK ISR
+;
+; Description : This function is the Tick ISR.
+;
+;               The following C-like pseudo-code describe the operation being performed in the code below.
+;
+;               Save all registers on the current task's stack:
+;                      Use the PUSH_ALL macro
+;                      Get the SREG, set Bit #7 and save onto the task's stack using -Y addressing
+;                      Use the PUSH_SP macro to save the task's hardware stack pointer onto the current task's stack
+;               OSIntNesting++;
+;               if (OSIntNesting == 1) {
+;                  OSTCBCur->OSTCBStkPtr = SP
+;               }
+;               Clear the interrupt;                  Not needed for the timer we used.
+;               OSTimeTick();                         Notify uC/OS-II that a tick has occured
+;               OSIntExit();                          Notify uC/OS-II about end of ISR
+;               Restore all registers that were save on the current task's stack:
+;                      Use the POP_SP macro to restore the task's hardware stack pointer
+;                      Use the POP_SREG macro to restore the SREG register
+;                      Use the POP_ALL macro to restore the remaining registers
+;               Return from interrupt
+;********************************************************************************************************
+;SECTION-段声明(也可用RSEG)  .intvec-复位及中断向量  CODE-代码段 
+;NOROOT表示如果这个段里的标号没引用就被linker舍弃，ROOT则一定不舍弃
+;如果注释掉PUBLIC  __vector_0x14，那么编译后在map文件里就看不到第二行了
+;__vector                0x80000000         Code  Gb  cstartup.o [1]
+;__vector_0x14       0x80000014         Code  Gb  cstartup.o [1]
+;(2)表示字节对齐数，为2的幂，(2)表示4字节对齐，(3)表示8字节对齐
+
+;    SECTION .intvec:CODE:NOROOT(2)
+
+
+                RSEG    CODE:CODE:NOROOT(1)
+                
+BSP_TickISR:
+                PUSH_ALL                            ; Save all registers and status register
+                IN      R16,SREG                    ; Save the SREG but with interrupts enabled
+                SBR     R16,BIT07                    
+                ST      -Y,R16
+                PUSH_SP                             ; Save the task's hardware stack pointer onto task's stack
+
+                LDS     R16,OSIntNesting            ; Notify uC/OS-II of ISR
+                INC     R16                         ;
+                STS     OSIntNesting,R16            ;
+
+                CPI     R16,1                       ; if (OSIntNesting == 1) {
+                BRNE    BSP_TickISR_1
+
+                LDS     R30,OSTCBCur                ;     OSTCBCur->OSTCBStkPtr = Y
+                LDS     R31,OSTCBCur+1
+                ST      Z+,R28
+                ST      Z+,R29                      ; }
+
+BSP_TickISR_1:
+                CALL    BSP_TickISR_Handler         ; Call tick ISR Handler written in C
+
+                CALL    OSIntExit                   ; Notify uC/OS-II about end of ISR
+
+                POP_SP                              ; Restore the hardware stack pointer from task's stack
+                POP_SREG_INT
+                POP_ALL                             ; Restore all registers
+                RETI
+                
+                
+;串口0接收中断函数
+                ;RSEG    CODE:CODE:NOROOT(2)
+UASRT0_RXC_ISR:
+                PUSH_ALL                            ; Save all registers and status register
+                IN      R16,SREG                    ; Save the SREG but with interrupts enabled
+                SBR     R16,BIT07                    
+                ST      -Y,R16
+                PUSH_SP                             ; Save the task's hardware stack pointer onto task's stack
+                
+                
+                LDS     R16,OSIntNesting            ; Notify uC/OS-II of ISR
+                INC     R16                         ;
+                STS     OSIntNesting,R16            ;
+
+                CPI     R16,1                       ; if (OSIntNesting == 1) {
+                BRNE    UASRT0_RXC_ISR_1
+
+                LDS     R30,OSTCBCur                ;     OSTCBCur->OSTCBStkPtr = Y
+                LDS     R31,OSTCBCur+1
+                ST      Z+,R28
+                ST      Z+,R29                      ; }
+                
+                ;CBR     UCSR0A BIT07                ;接受缓冲区有未读出数据时，set1,产生接收结束中断，为只读寄存器
+
+UASRT0_RXC_ISR_1:
+                CALL    UASRT0_RXC_ISR_Handler         ; Call tick ISR Handler written in C
+                
+                CALL    OSIntExit                   ; Notify uC/OS-II about end of ISR
+
+                POP_SP                              ; Restore the hardware stack pointer from task's stack
+                POP_SREG_INT
+                POP_ALL                             ; Restore all registers
+                RETI
+				
+TWI_ISR:
+                PUSH_ALL                            ; Save all registers and status register
+                IN      R16,SREG                    ; Save the SREG but with interrupts enabled
+                SBR     R16,BIT07                    
+                ST      -Y,R16
+                PUSH_SP                             ; Save the task's hardware stack pointer onto task's stack
+                
+                
+                LDS     R16,OSIntNesting            ; Notify uC/OS-II of ISR
+                INC     R16                         ;
+                STS     OSIntNesting,R16            ;
+
+                CPI     R16,1                       ; if (OSIntNesting == 1) {
+                BRNE    TWI_ISR_1
+
+                LDS     R30,OSTCBCur                ;     OSTCBCur->OSTCBStkPtr = Y
+                LDS     R31,OSTCBCur+1
+                ST      Z+,R28
+                ST      Z+,R29                      ; }
+                
+                ;CBR     UCSR0A BIT07                ;接受缓冲区有未读出数据时，set1,产生接收结束中断，为只读寄存器
+
+TWI_ISR_1:
+                CALL    TWI_ISR_Handler         ; Call tick ISR Handler written in C
+                
+                CALL    OSIntExit                   ; Notify uC/OS-II about end of ISR
+
+                POP_SP                              ; Restore the hardware stack pointer from task's stack
+                POP_SREG_INT
+                POP_ALL                             ; Restore all registers
+                RETI
+				
+Timer3_OVF_ISR:
+                PUSH_ALL                            ; Save all registers and status register
+                IN      R16,SREG                    ; Save the SREG but with interrupts enabled
+                SBR     R16,BIT07                    
+                ST      -Y,R16
+                PUSH_SP                             ; Save the task's hardware stack pointer onto task's stack
+                
+                
+                LDS     R16,OSIntNesting            ; Notify uC/OS-II of ISR
+                INC     R16                         ;
+                STS     OSIntNesting,R16            ;
+
+                CPI     R16,1                       ; if (OSIntNesting == 1) {
+                BRNE    Timer3_OVF_ISR_1
+
+                LDS     R30,OSTCBCur                ;     OSTCBCur->OSTCBStkPtr = Y
+                LDS     R31,OSTCBCur+1
+                ST      Z+,R28
+                ST      Z+,R29                      ; }
+                
+                ;CBR     UCSR0A BIT07                ;接受缓冲区有未读出数据时，set1,产生接收结束中断，为只读寄存器
+
+Timer3_OVF_ISR_1:
+                CALL    Timer3_OVF_ISR_Handler         ; Call tick ISR Handler written in C
+                
+                CALL    OSIntExit                   ; Notify uC/OS-II about end of ISR
+
+                POP_SP                              ; Restore the hardware stack pointer from task's stack
+                POP_SREG_INT
+                POP_ALL                             ; Restore all registers
+                RETI        
+                
+                END

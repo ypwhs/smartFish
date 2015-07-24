@@ -1,0 +1,428 @@
+/**************************************************************************************************************
+*                                                uC/OS-II
+*                                          The Real-Time Kernel
+* File : APP.C
+* Author: wangsg,Meano
+* QQ:591650928,859592326
+* Email:www_wsg@163.com,limy@lzrobot.com
+**************************************************************************************************************/
+#include  <includes.h>
+
+//变量区
+
+//uCOS任务堆栈
+OS_STK  AppTaskStartStk[OS_TASK_START_STK_SIZE];
+OS_STK  AppTask1Stk[OS_TASK_1_STK_SIZE];
+OS_STK  AppTask2Stk[OS_TASK_2_STK_SIZE]; 
+OS_STK  AppTask3Stk[OS_TASK_3_STK_SIZE]; 
+
+//uCOS信号量
+OS_EVENT* FishUartDataSem;
+OS_EVENT* ALIGNSem;
+OS_EVENT* TIMER3_Ovf_Sem;
+
+//标志变量
+INT8U fReceive = 0;
+INT8U ALIGN;
+
+//外部拓展变量
+extern INT8U UART0_ARRY[4];
+extern INT8U EX_SPEED;
+extern INT8U Speed_tem_z[16];
+extern INT8U Static_Offset_degree[3];
+extern INT8U Static_Offset_degree_init[3];
+extern INT8U FISHID[1];
+extern int Joint_Angle_value [3]; 
+extern INT8U EX_DIRECTION;
+extern INT8U Dynamic_Offset_degree_origin[8][3];
+extern INT8U Amplitude_degree_tem[16][3];
+extern INT8U Neighbouring_Offset_degree[3];
+
+//函数声明
+static void  AppTaskStart(void *p_arg);
+static void  AppTaskCreate(void);
+static void  AppTask1(void *p_arg);
+static void  AppTask2(void *p_arg);
+static void  AppTask3(void *p_arg);
+
+//主函数
+int  main (void)
+{
+    #if (OS_TASK_NAME_SIZE > 14) && (OS_TASK_STAT_EN > 0)
+        INT8U  err;
+    #endif
+
+    OSTaskStkSize     = OS_TASK_IDLE_STK_SIZE;                          //设置默认堆栈大小
+    OSTaskStkSizeHard = OS_TASK_STK_SIZE_HARD;                          //设置默认硬件堆栈大小
+    OSInit();                                                           //初始化"uC/OS-II, 片上实时操作系统" 
+    OSTaskStkSize     = OS_TASK_START_STK_SIZE;                         //设置总的堆栈大小
+    OSTaskStkSizeHard = OS_TASK_STK_SIZE_HARD;                          //设置默认硬件堆栈大小
+    OSTaskCreateExt(AppTaskStart,                                       //任务本体
+                    (void *)0,                                          //传递参数
+                    (OS_STK *)&AppTaskStartStk[OSTaskStkSize - 1],      //任务堆栈指针
+                    OS_TASK_START_PRIO,                                 //任务优先级
+                    0,                                                  //无用 id拓展
+                    (OS_STK *)&AppTaskStartStk[OSTaskStkSizeHard],      //栈底指针
+                    OSTaskStkSize - OSTaskStkSizeHard,                  //堆栈大小
+                    (void *)0,                                          //结构指针
+                    OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR);         //任务操作相关信息
+
+    #if (OS_TASK_NAME_SIZE > 14) && (OS_TASK_STAT_EN > 0)
+        OSTaskNameSet(OS_TASK_START_PRIO, "Start Task", &err);          //设置任务名称为Start Task
+    #endif
+    OSStart();                                                          //系统开始运行
+}
+
+//任务初始化，包含系统主任务
+static void  AppTaskStart (void *p_arg)
+{
+    INT8U error;                                                        //防止编译警告
+    BSP_Init();                                                         //时钟初始化
+    TWI_Master_Initialise();                                            //IIC初始化
+    USART0Init();                                                       //串口0初始化
+    Init_Devices();                                                     //片上硬件初始化
+    AppTaskCreate();                                                    //创建更多任务
+    FishUartDataSem = OSSemCreate(1);                                   //串口接收完成信号量
+    TIMER3_Ovf_Sem= OSSemCreate(1);                                     //定时器3溢出，信号量
+    ALIGNSem = OSSemCreate(1);                                          //接收调直命令信号量
+    Init_RobotFish_Data();                                              //机器鱼数据初始化，读出外部存储器中的数据
+    EX_DIRECTION=0x07;                                                  //初始状态在中间位置
+    
+    USART1_Init();
+    
+    while (1) {    	
+        OSSemPend(FishUartDataSem,0,&error);                            //等待串口0发送完成信号 
+        if((fReceive==2)&&((UART0_ARRY[1]&0x0F)==FISHID[0]))
+        {
+            INT8U temp= 0;
+            switch (UART0_ARRY[2]&0Xf0)
+            {	  
+                case 0xd0:      //speed
+                    EX_SPEED = (UART0_ARRY[2]&0x0f);//
+                    break;
+                case 0Xe0:      //direction
+                    EX_DIRECTION = (UART0_ARRY[2]&0x0f);
+                    break;
+                case 0x00:      //align
+                    ALIGN = (UART0_ARRY[2]&0x0f);
+                    OSSemPost(ALIGNSem);
+                    break;
+                case 0X10:      // keep the align
+                    if(UART0_ARRY[2]==0x1C)
+                    {
+                        fish_write_align_data();
+                        for(INT8U i=0;i<3;i++)
+                        {
+                            USART0_Transmit(Static_Offset_degree[i]);
+                        }
+                    }
+                    else if(UART0_ARRY[2]==0x18)
+                    {
+                        fish_reset_align_data();
+                        for(INT8U i=0;i<3;i++)
+                        {
+                            USART0_Transmit(Static_Offset_degree[i]);
+                        }
+                    }
+                    USART0_Transmit('\n');
+                    break;
+                case 0x20:      //change the fish id 
+                    FISHID[0]=UART0_ARRY[2]&0x0f;
+                    fish_write_id_data();
+                    USART0_Transmit(FISHID[0]);
+                    break;
+                case 0x40:      //change the fish frequency 更改机器鱼的频率
+                    fish_write_frequency((UART0_ARRY[2]&0x0f)-1);
+                    break; 
+                case 0xb0:
+                    switch (UART0_ARRY[2]&0x0f)
+                    {
+                        case 0x01://改变对应档位的速度值，必须先发送速度指令
+                            if(Speed_tem_z[EX_SPEED]<=30)
+                            {
+                                Speed_tem_z[EX_SPEED]++;
+                            }else
+                                Speed_tem_z[EX_SPEED]--;
+                            break;
+                        case 0x02://改变对应档位的速度值，必须先发送速度指令
+                            if(Speed_tem_z[EX_SPEED]>=254)
+                            {
+                                Speed_tem_z[EX_SPEED]--;
+                            }
+                                Speed_tem_z[EX_SPEED]++;
+                            break;
+                        case 0x03://改变对应方向档位的偏移角度，必须先发送方向档位
+                            temp = EX_DIRECTION;
+                            if(temp>7)
+                            {
+                                if (temp >14)
+                                {
+                                     temp = 14;
+                                }
+                                temp = 14-temp;
+                            }
+                            if(Dynamic_Offset_degree_origin[temp][0]>0)
+                            Dynamic_Offset_degree_origin[temp][0]--;
+                            break;
+                        case 0x04://改变对应方向档位的偏移角度，必须先发送方向档位
+                            temp = EX_DIRECTION;
+                            if(temp>7)
+                            {
+                                if (temp >14)
+                                {
+                                    temp = 14;
+                                }
+                                temp = 14-temp;
+                            }
+                            if(Dynamic_Offset_degree_origin[temp][0]<255)
+                            Dynamic_Offset_degree_origin[temp][0]++;
+                            break;
+                        case 0x05://改变对应方向档位的偏移角度，必须先发送方向档位
+                            temp = EX_DIRECTION;
+                            if(temp>7)
+                            {
+                                if (temp >14)
+                                {
+                                    temp = 14;
+                                }
+                                temp = 14-temp;
+                            }
+                            if(Dynamic_Offset_degree_origin[temp][0]>0)
+                            Dynamic_Offset_degree_origin[temp][1]--;
+                            break;
+                        case 0x06://改变对应方向档位的偏移角度，必须先发送方向档位
+                            temp = EX_DIRECTION;
+                            if(temp>7)
+                            {
+                                if (temp >14)
+                                {
+                                    temp = 14;
+                                }
+                                temp = 14-temp;
+                            }
+                            if(Dynamic_Offset_degree_origin[temp][0]<255)
+                            Dynamic_Offset_degree_origin[temp][1]++;
+                            break;
+                        case 0x07://改变对应方向档位的偏移角度，必须先发送方向档位
+                            temp = EX_DIRECTION;
+                            if(temp>7)
+                            {
+                                if (temp >14)
+                                {
+                                    temp = 14;
+                               }
+                               temp = 14-temp;
+                            }
+                            if(Dynamic_Offset_degree_origin[temp][0]<255)
+                            Dynamic_Offset_degree_origin[temp][2]--;
+                            break;
+                        case 0x08://改变对应方向档位的偏移角度，必须先发送方向档位
+                            temp = EX_DIRECTION;
+                            if(temp>7)
+                            {
+                                if (temp >14)
+                                {
+                                    temp = 14;
+                                }
+                                temp = 14-temp;
+                            }
+                            if(Dynamic_Offset_degree_origin[temp][0]<255)
+                            Dynamic_Offset_degree_origin[temp][2]++;
+                            break;
+                        default:
+                            break;
+                    }
+                    break;
+                case 0xc0:
+                    switch (UART0_ARRY[2]&0x0f)
+                    {
+                        case 0x01://改变对应速度档位的幅度值，必须先发送速度指令
+                            if( Amplitude_degree_tem[EX_SPEED][0]>0)
+                            Amplitude_degree_tem[EX_SPEED][0]--;
+                            break;
+                        case 0x02://改变对应速度档位的幅度值，必须先发送速度指令
+                            if( Amplitude_degree_tem[EX_SPEED][0]<90)
+                            Amplitude_degree_tem[EX_SPEED][0]++;
+                            break;
+                        case 0x03://改变对应速度档位的幅度值，必须先发送速度指令
+                            if( Amplitude_degree_tem[EX_SPEED][1]>0)
+                            Amplitude_degree_tem[EX_SPEED][1]--;
+                            break;
+                        case 0x04://改变对应速度档位的幅度值，必须先发送速度指令
+                            if( Amplitude_degree_tem[EX_SPEED][1]<90)
+                            Amplitude_degree_tem[EX_SPEED][1]++;
+                            break;
+                        case 0x05://改变对应速度档位的幅度值，必须先发送速度指令
+                            if( Amplitude_degree_tem[EX_SPEED][2]>0)
+                            Amplitude_degree_tem[EX_SPEED][2]--;
+                            break;
+                        case 0x06://改变对应速度档位的幅度值，必须先发送速度指令
+                            if( Amplitude_degree_tem[EX_SPEED][2]<90)
+                            Amplitude_degree_tem[EX_SPEED][2]++;
+                            break;
+                        case 0x07://改变第二关节相位差
+                            if( Neighbouring_Offset_degree[1]>0)
+                            Neighbouring_Offset_degree[1]--;
+                            break;
+                        case 0x08://改变第二关节相位差
+                            if( Neighbouring_Offset_degree[1]<255)
+                            Neighbouring_Offset_degree[1]++;
+                            break;
+                        case 0x09://改变第三关节相位差
+                            if( Neighbouring_Offset_degree[2]>0)
+                            Neighbouring_Offset_degree[2]--;
+                            break;
+                        case 0x00://改变第三关节相位差
+                            if( Neighbouring_Offset_degree[2]<255)
+                            Neighbouring_Offset_degree[2]++;
+                            break;
+                        default:
+                            break;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+        if(UART0_ARRY[1]==0x91)//保存参数
+        {
+            if(UART0_ARRY[2]==0x66)
+            {
+                 fish_write_parameter();//保存速度、幅度、偏移角度参数
+            }
+            if(UART0_ARRY[2]==0x99)
+            {
+                system_write_i2c_data();//恢复出厂设置
+                system_read_i2c_data();
+            }
+        }
+        fReceive=0;
+        IO_Toggle(B,2);//知识灯闪烁
+    }
+}
+
+
+//任务创建函数
+static  void  AppTaskCreate (void)
+{
+#if (OS_TASK_NAME_SIZE > 14) && (OS_TASK_STAT_EN > 0)
+    INT8U  err;
+#endif
+    /*---- Task initialization code goes HERE! --------------------------------------------------------*/
+    OSTaskStkSize     = OS_TASK_1_STK_SIZE;        /* Setup the default stack size                     */
+    OSTaskStkSizeHard = OS_TASK_STK_SIZE_HARD;     /* Setup the default hardware stack size            */
+    OSTaskCreateExt(AppTask1,
+                    (void *)0,
+                    (OS_STK *)&AppTask1Stk[OSTaskStkSize - 1],
+                    OS_TASK_1_PRIO,
+                    OS_TASK_1_PRIO,
+                    (OS_STK *)&AppTask1Stk[OSTaskStkSizeHard],
+                    OSTaskStkSize - OSTaskStkSizeHard,
+                    (void *)0,
+                    OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR);
+#if (OS_TASK_NAME_SIZE > 14) && (OS_TASK_STAT_EN > 0)
+    OSTaskNameSet(OS_TASK_1_PRIO, "Task 1", &err);
+#endif
+
+    /*---- Task initialization code goes HERE! --------------------------------------------------------*/
+    OSTaskStkSize     = OS_TASK_2_STK_SIZE;        /* Setup the default stack size                     */
+    OSTaskStkSizeHard = OS_TASK_STK_SIZE_HARD;     /* Setup the default hardware stack size            */
+    OSTaskCreateExt(AppTask2,
+                    (void *)0,
+                    (OS_STK *)&AppTask2Stk[OSTaskStkSize - 1],
+                    OS_TASK_2_PRIO,
+                    OS_TASK_2_PRIO,
+                    (OS_STK *)&AppTask2Stk[OSTaskStkSizeHard],
+                    OSTaskStkSize - OSTaskStkSizeHard,
+                    (void *)0,
+                    OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR);
+#if (OS_TASK_NAME_SIZE > 14) && (OS_TASK_STAT_EN > 0)
+    OSTaskNameSet(OS_TASK_2_PRIO, "Task 2", &err);
+#endif
+        /*---- Task initialization code goes HERE! --------------------------------------------------------*/
+    OSTaskStkSize     = OS_TASK_3_STK_SIZE;        /* Setup the default stack size                     */
+    OSTaskStkSizeHard = OS_TASK_STK_SIZE_HARD;     /* Setup the default hardware stack size            */
+    OSTaskCreateExt(AppTask3,
+                    (void *)0,
+                    (OS_STK *)&AppTask3Stk[OSTaskStkSize - 1],
+                    OS_TASK_3_PRIO,
+                    OS_TASK_3_PRIO,
+                    (OS_STK *)&AppTask3Stk[OSTaskStkSizeHard],
+                    OSTaskStkSize - OSTaskStkSizeHard,
+                    (void *)0,
+                    OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR);
+#if (OS_TASK_NAME_SIZE > 14) && (OS_TASK_STAT_EN > 0)
+    OSTaskNameSet(OS_TASK_3_PRIO, "Task 3", &err);
+#endif
+}
+
+//任务1，调直任务
+static void  AppTask1(void *p_arg) 
+{
+    (void)p_arg;
+    INT8U error;
+    while (1) {
+        OSSemPend(ALIGNSem,0,&error);               //等待调直信号量
+        INT8U tem;
+        tem = ALIGN&0X07;   
+        if((ALIGN&0X08)==0x00)
+        {
+            if(Static_Offset_degree[tem]>= 120)
+            {
+                Static_Offset_degree[tem]--;		
+            }
+            Static_Offset_degree[tem]++;
+        }
+        else
+        {
+            if(Static_Offset_degree[tem] <= 0)
+            {
+                Static_Offset_degree[tem]++;		
+            }
+            Static_Offset_degree[tem]--;
+        }
+        USART0_Transmit(Static_Offset_degree[tem]);
+    }
+}
+
+//任务2，舵机角度计算任务
+static void  AppTask2(void *p_arg)
+{
+    (void)p_arg;
+    INT8U error;
+    while (1) {
+        OSSemPend(TIMER3_Ovf_Sem,0,&error);
+        if(fReceive<2){
+            fReceive++;
+        }else if(fReceive>2){
+            fReceive=2;
+        }
+        calculate_data();
+        OCR1A=Joint_Angle_value[0];	
+        OCR1B=Joint_Angle_value[1];
+        OCR3A=Joint_Angle_value[2]; 
+    }
+}
+
+//任务3，用户拓展任务
+static void  AppTask3(void *p_arg)
+{
+    (void)p_arg;
+    while (1) {
+        //在此拓展任务3，必须使用OSTimeDly(delaytime)作为延时函数，且不能使用死循环
+        while(USART1_Receive() != 0x91)OSTimeDly(1);
+        unsigned char rec = USART1_Receive();
+        switch (rec&0xF0)
+        {
+            case 0xD0:
+                EX_SPEED = rec & 0x0F;
+                break;
+            case 0xE0:
+                EX_DIRECTION = rec & 0x0F;
+                break;
+            default:
+                break;
+        }
+        OSTimeDly(1);
+    }
+}

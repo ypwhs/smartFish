@@ -1,0 +1,67 @@
+//这些函数没舍得删，感觉不错留了下来
+void Servo_Init(void)
+{
+  DDRB |= (1<<5)|(1<<6);    
+  TCCR1A = 0XFE;//(1<<COM1A1)|(1<<COM1A0)|(1<<COM1B1)|1<<COM1B0)|(1<<COM1C1)|1<<COM1C0)|(1<<WGM11);
+  TCCR1B = 0X1A;//(1<<WGM13)|(1<<WGM13)|(1<<CS11);
+  //8分频，快速PWM
+  //ICR1 = PWM_Period_us;                                //周期为20MS
+}
+/*
+*函数名称：
+*函数描述：控制第一、第二关节的摆动速度
+*/
+void Servo_Control(INT8U note, INT8U current, INT16U speed)
+{
+  	INT8U priro = 0;
+	if(note == 0x01)
+	 	priro= (OCR1A-600)/10;
+	if(note == 0x02)
+		priro= (OCR1B-600)/10;
+
+	if(priro>current)
+		{
+		INT16U count = (priro-current)*2;
+			for(INT16U i = 0;i<count;i++)
+				{
+					if(note == 0x01)
+						{
+							OCR1A = OCR1A-5;
+						}
+					if(note == 0x02)
+						{
+							OCR1B = OCR1B-5;
+						}
+					
+					 OSTimeDly(speed);
+				}
+		}
+	else if(priro<current)
+		{
+		INT16U count = (current-priro)*2;
+			for(INT16U i = 0;i<count;i++)
+				{
+					if(note == 0x01)
+						{
+							OCR1A = OCR1A+5;
+						}
+					if(note == 0x02)
+						{
+							OCR1B = OCR1B+5;
+						}
+					
+					 OSTimeDly(speed);
+				}
+		}
+	else if(priro == current)
+		{
+			if(note == 0x01)
+				{
+					OCR1A = OCR1A;
+				}
+			if(note == 0x02)
+				{
+					OCR1B = OCR1B;
+				}
+		}
+}

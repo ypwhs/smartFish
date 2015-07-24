@@ -1,0 +1,12 @@
+*.pbi
+*.r90
+*.cout
+*.pbd
+*.map
+*.browse
+*.wsdt
+*.wspos
+/Settings/*
+/Release/Obj/*
+/Release/List/*
+*.dep
