@@ -1,34 +1,34 @@
-"\\psf\Home\Desktop\智能车2\smartCar\Libraries\drivers\K\src\adc.c"
+"\\psf\Home\Desktop\smartFish\Libraries\drivers\K\src\adc.c"
 -std=c99
 -ferror-limit=100
 -I
-\\psf\Home\Desktop\智能车2\smartCar\Project\smartFish\test\IAR\..\..\..\..\Libraries\drivers\K\inc
+\\psf\Home\Desktop\smartFish\Project\smartFish\test\IAR\..\..\..\..\Libraries\drivers\K\inc
 -I
-\\psf\Home\Desktop\智能车2\smartCar\Project\smartFish\test\IAR\..\..\..\..\Libraries\devices\inc
+\\psf\Home\Desktop\smartFish\Project\smartFish\test\IAR\..\..\..\..\Libraries\devices\inc
 -I
-\\psf\Home\Desktop\智能车2\smartCar\Project\smartFish\test\IAR\..\..\..\..\Libraries\startup\CoreSupport
+\\psf\Home\Desktop\smartFish\Project\smartFish\test\IAR\..\..\..\..\Libraries\startup\CoreSupport
 -I
-\\psf\Home\Desktop\智能车2\smartCar\Project\smartFish\test\IAR\..\..\..\..\Libraries\startup\DeviceSupport\IAR-ARM
+\\psf\Home\Desktop\smartFish\Project\smartFish\test\IAR\..\..\..\..\Libraries\startup\DeviceSupport\IAR-ARM
 -I
-\\psf\Home\Desktop\智能车2\smartCar\Project\smartFish\test\IAR\..\..\..\..\Libraries\startup\DeviceSupport
+\\psf\Home\Desktop\smartFish\Project\smartFish\test\IAR\..\..\..\..\Libraries\startup\DeviceSupport
 -I
-\\psf\Home\Desktop\智能车2\smartCar\Project\smartFish\test\IAR
+\\psf\Home\Desktop\smartFish\Project\smartFish\test\IAR
 -I
 C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.0\arm\inc
 -I
 C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.0\arm\inc\c
 -I
-\\psf\Home\Desktop\智能车2\smartCar\Libraries\drivers\K\inc
+\\psf\Home\Desktop\smartFish\Libraries\drivers\K\inc
 -I
-\\psf\Home\Desktop\智能车2\smartCar\Libraries\devices\inc
+\\psf\Home\Desktop\smartFish\Libraries\devices\inc
 -I
-\\psf\Home\Desktop\智能车2\smartCar\Libraries\startup\CoreSupport
+\\psf\Home\Desktop\smartFish\Libraries\startup\CoreSupport
 -I
-\\psf\Home\Desktop\智能车2\smartCar\Libraries\startup\DeviceSupport\IAR-ARM
+\\psf\Home\Desktop\smartFish\Libraries\startup\DeviceSupport\IAR-ARM
 -I
-\\psf\Home\Desktop\智能车2\smartCar\Libraries\startup\DeviceSupport
+\\psf\Home\Desktop\smartFish\Libraries\startup\DeviceSupport
 -I
-\\psf\Home\Desktop\智能车2\smartCar\Project\smartFish\test\IAR
+\\psf\Home\Desktop\smartFish\Project\smartFish\test\IAR
 -DMK60D10=1
 -DDEBUG=1
 -D__CHAR_BITS__=8
@@ -226,8 +226,8 @@ C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.0\arm\inc\c
 -D__HAS_LOCATED_DECLARATION__=1
 -D__HAS_LOCATED_WITH_INIT__=1
 -D__IAR_COMPILERBASE__=593666
--D__DATE__="Jul 19 2015"
--D__TIME__="00:30:10"
+-D__DATE__="Jul 24 2015"
+-D__TIME__="19:52:16"
 -D__STDC__=1
 -D__STDC_VERSION__=199901L
 -D__STDC_HOSTED__=1
